@@ -1,0 +1,60 @@
+# =========================
+# Unity generated folders
+# =========================
+
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Memory captures
+[Mm]emoryCaptures/
+
+# Asset metadata backups
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# =========================
+# Unity generated files
+# =========================
+
+sysinfo.txt
+
+# =========================
+# IDE / Visual Studio
+# =========================
+
+.vs/
+.idea/
+
+# Keep selected VS Code team settings if we add them later
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+
+# Visual Studio / C# generated project files
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+*.pidb
+*.booproj
+
+# =========================
+# OS files
+# =========================
+
+.DS_Store
+Thumbs.db
+
+# =========================
+# Crash reports
+# =========================
+
+crashlytics-build.properties
