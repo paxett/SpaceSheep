@@ -1,0 +1,93 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1d4b7c20e2f4b4a9d3c1a2b6c1d5a1f, type: 3}
+  m_Name: RepairSessionData
+  m_EditorClassIdentifier: 
+  color1: {r: 0, g: 0.8117647, b: 1, a: 1}
+  color2: {r: 1, g: 0.62352943, b: 0.10980392, a: 1}
+  color3: {r: 0.4862745, g: 1, b: 0.41960785, a: 1}
+  color4: {r: 1, g: 0.83137256, b: 0.14117648, a: 1}
+  faults:
+  - id: Н1
+    displayName: Неисправность 1
+    breakdownIds:
+    - П1
+    - П3
+  - id: Н2
+    displayName: Неисправность 2
+    breakdownIds:
+    - П2
+    - П3
+  - id: Н3
+    displayName: Неисправность 3
+    breakdownIds:
+    - П3
+    - П4
+  breakdowns:
+  - id: П1
+    displayName: Поломка 1
+    shipPosition: {x: 0.28, y: 0.72}
+    ovalSize: {x: 0.07, y: 0.045}
+    consequenceFaultIds:
+    - Н1
+    - Н2
+    diagnosticIds:
+    - Д1
+  - id: П2
+    displayName: Поломка 2
+    shipPosition: {x: 0.72, y: 0.68}
+    ovalSize: {x: 0.07, y: 0.045}
+    consequenceFaultIds:
+    - Н2
+    - Н3
+    diagnosticIds:
+    - Д1
+  - id: П3
+    displayName: Поломка 3
+    shipPosition: {x: 0.3, y: 0.16}
+    ovalSize: {x: 0.07, y: 0.045}
+    consequenceFaultIds:
+    - Н1
+    - Н2
+    diagnosticIds:
+    - Д2
+  - id: П4
+    displayName: Поломка 4
+    shipPosition: {x: 0.7, y: 0.24}
+    ovalSize: {x: 0.07, y: 0.045}
+    consequenceFaultIds:
+    - Н1
+    - Н3
+    diagnosticIds:
+    - Д2
+    - Д3
+  diagnostics:
+  - id: Д1
+    displayName: Диагностика А
+    durationInMinutes: 1
+    durationSeconds: 3
+    breakdownIds:
+    - П1
+    - П2
+  - id: Д2
+    displayName: Диагностика В
+    durationInMinutes: 2
+    durationSeconds: 5
+    breakdownIds:
+    - П3
+    - П4
+  - id: Д3
+    displayName: Диагностика С
+    durationInMinutes: 3
+    durationSeconds: 4
+    breakdownIds:
+    - П4
