@@ -4,6 +4,9 @@ Unity-проект (Unity 6000.5.6f1, URP 2D, Input System). Основная с
 
 Помимо геймплея за овцу в проекте есть мини-игра «Ремонт корабля»: игрок диагностирует и устраняет поломки корабля в доке. Все данные этой мини-игры описываются одним ассетом — `RepairSessionData`.
 
+1. Рабочая папка https://drive.google.com/drive/folders/1aeNmxSkUPF00Mn2-0R_deMCnLLBd7y2g
+2. Доска Миро https://miro.com/app/board/uXjVJmUwl-w=/?share_link_id=897502552809
+
 ---
 
 # Структура ассета `RepairSessionData`
