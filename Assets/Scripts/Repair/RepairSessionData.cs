@@ -3,23 +3,29 @@ using UnityEngine;
 
 /// <summary>
 /// Внешне настраиваемое описание сессии ремонта: неисправности, поломки,
-/// диагностики и связи между ними (граф), а также палитра цветов 1-4.
+/// диагностики и связи между ними (граф), а также палитра из 3 цветов.
 /// Настраивается в Inspector (файл-ассет в Assets/Settings), без правки кода.
 /// </summary>
 [CreateAssetMenu(fileName = "RepairSessionData", menuName = "Space Sheep/Repair Session Data")]
 public class RepairSessionData : ScriptableObject
 {
     [Header("Палитра")]
-    [Tooltip("Цвет 1 - активация/подтверждение (плитки неисправностей в шаге 3, кнопка запуска, диагностика в процессе).")]
-    public Color color1 = new Color(0f, 0.81f, 1f);
-    [Tooltip("Цвет 2 - связь/кандидат (последствия поломки, диагностики-кандидаты, поломки диагностики на корабле).")]
-    public Color color2 = new Color(1f, 0.62f, 0.11f);
-    [Tooltip("Цвет 3 - выбор/обводка (обводка выбранной поломки и выбранной диагностики).")]
-    public Color color3 = new Color(0.49f, 1f, 0.42f);
-    [Tooltip("Цвет 4 - прогресс и символ диагностики (прогресс-бары, ромб на границе поломок).")]
-    public Color color4 = new Color(1f, 0.83f, 0.14f);
+    [Tooltip("Цвет всех плиток/овалов: неисправности, поломки на корабле, диагностики (единая заливка).")]
+    public Color tileColor = new Color(1f, 0.6f, 0.1f);
+    [Tooltip("Цвет обводки выбранной плитки/овала.")]
+    public Color outlineColor = new Color(1f, 1f, 1f);
+    [Tooltip("Цвет прогресс-бара диагностики и ромбов-маркеров на диагностируемых поломках.")]
+    public Color progressColor = new Color(0.6f, 0.25f, 0.95f);
+
+    [Header("Балансные значения для ремонтируемого корабля")]
+    [Tooltip("Максимальное количество поломок на корабле (n). Из общего списка ремонтируемых поломок случайно выбирается не более n; если поломок меньше — берутся все.")]
+    public int maxBreakdownsPerSession = 3;
+    [Tooltip("Количество неисправностей, связанных с каждой поломкой (m). Для каждой выбранной поломки из её consequenceFaultIds случайно берётся не более m; если неисправностей меньше — берутся все.")]
+    public int faultsPerBreakdown = 2;
 
     [Header("Контент сессии")]
+    [Tooltip("Размер овалов поломок на корабле в нормализованных единицах относительно размера корабля. Единый для всех поломок (все овалы одинакового размера).")]
+    public Vector2 ovalSize = new Vector2(0.07f, 0.045f);
     public RepairFault[] faults;
     public RepairBreakdown[] breakdowns;
     public RepairDiagnostic[] diagnostics;
@@ -27,6 +33,10 @@ public class RepairSessionData : ScriptableObject
     private Dictionary<string, RepairFault> _faultById;
     private Dictionary<string, RepairBreakdown> _breakdownById;
     private Dictionary<string, RepairDiagnostic> _diagnosticById;
+
+    // Текущая случайно выбранная сессия: n поломок на корабле и для каждой — m неисправностей.
+    private RepairBreakdown[] _sessionBreakdowns = new RepairBreakdown[0];
+    private readonly Dictionary<string, string[]> _faultsForBreakdown = new Dictionary<string, string[]>();
 
     public void BuildLookups()
     {
@@ -54,7 +64,102 @@ public class RepairSessionData : ScriptableObject
     public RepairBreakdown GetBreakdown(string id) => _breakdownById.TryGetValue(id, out var b) ? b : null;
     public RepairDiagnostic GetDiagnostic(string id) => _diagnosticById.TryGetValue(id, out var d) ? d : null;
 
-    public int TotalBreakdownCount => breakdowns != null ? breakdowns.Length : 0;
+    /// <summary>Поломки, отобранные для текущей сессии (не более n).</summary>
+    public RepairBreakdown[] SessionBreakdowns => _sessionBreakdowns ?? new RepairBreakdown[0];
+
+    /// <summary>Входит ли поломка в текущую сессию.</summary>
+    public bool IsInSession(string breakdownId)
+    {
+        foreach (var b in SessionBreakdowns)
+            if (b != null && b.id == breakdownId)
+                return true;
+        return false;
+    }
+
+    /// <summary>Связана ли указанная неисправность с поломкой в рамках текущей сессии (учитывает выбранные m неисправностей).</summary>
+    public bool BreakdownHasFault(string breakdownId, string faultId)
+    {
+        if (!_faultsForBreakdown.TryGetValue(breakdownId, out var faults))
+            return false;
+        return faults != null && System.Array.IndexOf(faults, faultId) >= 0;
+    }
+
+    /// <summary>Входит ли неисправность в текущую сессию (связана хотя бы с одной выбранной поломкой).</summary>
+    public bool IsFaultInSession(string faultId)
+    {
+        if (string.IsNullOrEmpty(faultId)) return false;
+        foreach (var kv in _faultsForBreakdown)
+            if (kv.Value != null)
+                for (int i = 0; i < kv.Value.Length; i++)
+                    if (kv.Value[i] == faultId)
+                        return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Случайный выбор балансного набора: n поломок из общего списка (все, если меньше)
+    /// и для каждой — m неисправностей из её consequenceFaultIds (все, если меньше).
+    /// Вызывается при старте сессии и при каждом перезапуске.
+    /// </summary>
+    public void RollSession()
+    {
+        int n = Mathf.Max(1, maxBreakdownsPerSession);
+        int m = Mathf.Max(1, faultsPerBreakdown);
+
+        // Кандидаты — поломки, которые можно отремонтировать (есть выявляющая их диагностика).
+        var pool = new List<RepairBreakdown>();
+        if (breakdowns != null)
+            foreach (var b in breakdowns)
+                if (b != null && !string.IsNullOrEmpty(b.id) && IsRepairable(b))
+                    pool.Add(b);
+        // Если таких нет — берём все поломки, чтобы игра оставалась проходимой.
+        if (pool.Count == 0 && breakdowns != null)
+            foreach (var b in breakdowns)
+                if (b != null && !string.IsNullOrEmpty(b.id))
+                    pool.Add(b);
+
+        var chosen = new List<RepairBreakdown>();
+        while (pool.Count > 0 && chosen.Count < n)
+        {
+            int idx = Random.Range(0, pool.Count);
+            chosen.Add(pool[idx]);
+            pool.RemoveAt(idx);
+        }
+        _sessionBreakdowns = chosen.ToArray();
+
+        _faultsForBreakdown.Clear();
+        foreach (var b in _sessionBreakdowns)
+        {
+            var candidate = new List<string>();
+            if (b.consequenceFaultIds != null)
+                foreach (var f in b.consequenceFaultIds)
+                    if (!string.IsNullOrEmpty(f) && !candidate.Contains(f))
+                        candidate.Add(f);
+
+            var picked = new List<string>();
+            while (candidate.Count > 0 && picked.Count < m)
+            {
+                int idx = Random.Range(0, candidate.Count);
+                picked.Add(candidate[idx]);
+                candidate.RemoveAt(idx);
+            }
+            _faultsForBreakdown[b.id] = picked.ToArray();
+        }
+    }
+
+    /// <summary>Есть ли хотя бы одна диагностика, выявляющая эту поломку.</summary>
+    private bool IsRepairable(RepairBreakdown b)
+    {
+        if (diagnostics == null) return false;
+        foreach (var d in diagnostics)
+            if (d != null && d.breakdownIds != null)
+                for (int i = 0; i < d.breakdownIds.Length; i++)
+                    if (d.breakdownIds[i] == b.id)
+                        return true;
+        return false;
+    }
+
+    public int TotalBreakdownCount => SessionBreakdowns.Length;
 }
 
 [System.Serializable]
@@ -64,8 +169,6 @@ public class RepairFault
     public string id;
     [Tooltip("Отображаемое название на панели неисправностей.")]
     public string displayName;
-    [Tooltip("ID поломок, которые возможны при этой неисправности (овалы на корабле в шаге 1).")]
-    public string[] breakdownIds;
 }
 
 [System.Serializable]
@@ -75,14 +178,10 @@ public class RepairBreakdown
     public string id;
     [Tooltip("Отображаемое название (метка на овале корабля).")]
     public string displayName;
-    [Tooltip("Позиция овала на спрайте корабля в нормализованных координатах 0..1 (0,0 - низ-лево, 1,1 - верх-право).")]
+    [Tooltip("Позиция овала (место локализации) на спрайте корабля в нормализованных координатах 0..1 (0,0 - низ-лево, 1,1 - верх-право).")]
     public Vector2 shipPosition = new Vector2(0.5f, 0.5f);
-    [Tooltip("Размер овала в нормализованных единицах относительно размера корабля.")]
-    public Vector2 ovalSize = new Vector2(0.06f, 0.04f);
-    [Tooltip("ID двух неисправностей, которые влечет эта поломка (подсвечиваются цветом 2 на панели неисправностей).")]
+    [Tooltip("ID неисправностей, которые может повлечь эта поломка. По ним выводятся овалы на корабле при выборе неисправности.")]
     public string[] consequenceFaultIds;
-    [Tooltip("ID диагностик, которые могут выявить эту поломку. Только они остаются активными после выбора поломки.")]
-    public string[] diagnosticIds;
 }
 
 [System.Serializable]
@@ -92,10 +191,8 @@ public class RepairDiagnostic
     public string id;
     [Tooltip("Отображаемое название на панели диагностики (например \"Диагностика В\").")]
     public string displayName;
-    [Tooltip("Длительность диагностики в ЧЧ:ММ - показывается на плитке (например 2 => \"00:02\").")]
-    public float durationInMinutes;
-    [Tooltip("Фактическое время заполнения прогресс-бара в реальных секундах.")]
-    public float durationSeconds;
+    [Tooltip("Время исполнения в секундах - столько длится выполнение; на плитке показывается «ММ:СС» (например 5 => \"00:05\").")]
+    public float duration;
     [Tooltip("ID поломок, которые находит эта диагностика и которые устраняются по завершении.")]
     public string[] breakdownIds;
 }

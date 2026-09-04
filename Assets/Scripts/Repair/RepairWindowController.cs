@@ -66,12 +66,14 @@ public class RepairWindowController : MonoBehaviour
     private Button _runButton;
     private Text _runLabel;
     private TileView _runningDiagTile;
-    private GameObject _rhomb;
+    private readonly List<GameObject> _rhombs = new List<GameObject>();
     private Font _font;
 
     private Sprite _uiWhite;
     private Sprite _circleSprite;
+    private Sprite _ringSprite;
     private Sprite _squareSprite;
+    private Image _faultsPanelRoot;
 
     public void Init(RepairGameManager manager)
     {
@@ -104,6 +106,10 @@ public class RepairWindowController : MonoBehaviour
                 TickRunning();
                 break;
             case State.FaultSelected:
+            case State.BreakdownSelected:
+            case State.DiagnosticSelected:
+                // Клик по любому отображаемому овалу поломки в любой стадии выбора
+                // переключает выбранную поломку (и при необходимости — неисправность).
                 TryPickOval();
                 break;
         }
@@ -126,6 +132,7 @@ public class RepairWindowController : MonoBehaviour
     {
         _uiWhite = Sprite.Create(CreateSolidTexture(4, 4, Color.white), new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 100f);
         _circleSprite = Sprite.Create(CreateCircleTexture(64), new Rect(0, 0, 64, 64), new Vector2(0.5f, 0.5f), 100f);
+        _ringSprite = Sprite.Create(CreateRingTexture(64), new Rect(0, 0, 64, 64), new Vector2(0.5f, 0.5f), 100f);
         _squareSprite = Sprite.Create(CreateSolidTexture(16, 16, Color.white), new Rect(0, 0, 16, 16), new Vector2(0.5f, 0.5f), 100f);
     }
 
@@ -150,6 +157,27 @@ public class RepairWindowController : MonoBehaviour
                 float dy = (y + 0.5f - r) / r;
                 float d = Mathf.Sqrt(dx * dx + dy * dy);
                 float a = Mathf.Clamp01(1f - (d - 0.85f) * 6f);
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>Кольцо: прозрачный центр и прозрачный внешний край, непрозрачное кольцо между ними.
+    /// Используется как обводка, чтобы выбранный овал не перекрывался заливкой.</summary>
+    private static Texture2D CreateRingTexture(int size)
+    {
+        const float inner = 0.78f; // внутренняя граница кольца
+        const float outer = 1.0f;  // внешняя граница кольца
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        float r = size * 0.5f;
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x + 0.5f - r) / r;
+                float dy = (y + 0.5f - r) / r;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01((d - inner) / 0.08f) * Mathf.Clamp01((outer - d) / 0.08f);
                 tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
             }
         tex.Apply();
@@ -242,8 +270,8 @@ public class RepairWindowController : MonoBehaviour
         text.fontSize = fontSize;
         text.alignment = anchor;
         text.color = color;
-        text.horizontalOverflow = HorizontalWrapMode.Overflow;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Truncate;
         text.raycastTarget = false;
         return text;
     }
@@ -272,7 +300,7 @@ public class RepairWindowController : MonoBehaviour
 
     private TileView CreateTile(string id, string label, Transform parent, Vector2 pos, Action onClick)
     {
-        var bg = CreatePanel(id, parent, new Color(0.13f, 0.17f, 0.24f));
+        var bg = CreatePanel(id, parent, _manager.Session.tileColor);
         bg.rectTransform.anchoredPosition = pos;
         bg.rectTransform.sizeDelta = new Vector2(TileWidth, TileHeight);
 
@@ -325,12 +353,12 @@ public class RepairWindowController : MonoBehaviour
         return view;
     }
 
-    private static string FormatHhMm(float minutes)
+    private static string FormatMmSs(float seconds)
     {
-        int m = Mathf.Max(0, Mathf.RoundToInt(minutes));
-        int h = m / 60;
-        int min = m % 60;
-        return h.ToString("00") + ":" + min.ToString("00");
+        int total = Mathf.Max(0, Mathf.RoundToInt(seconds));
+        int m = total / 60;
+        int s = total % 60;
+        return m.ToString("00") + ":" + s.ToString("00");
     }
 
     private static void SetOutline(TileView view, bool enabled, Color color)
@@ -393,22 +421,45 @@ public class RepairWindowController : MonoBehaviour
     private void BuildFaultsPanel(Transform panel)
     {
         var session = _manager.Session;
-        var col = CreatePanel("FaultsPanel", panel, new Color(0.04f, 0.06f, 0.10f, 0.85f));
-        col.rectTransform.anchoredPosition = new Vector2(-480f, 0f);
-        col.rectTransform.sizeDelta = new Vector2(330f, 660f);
+        if (session == null) return;
 
-        var title = CreateText("Title", col.transform, "НЕИСПРАВНОСТИ", 20, TextAnchor.MiddleCenter, new Color(0.75f, 0.8f, 0.9f));
-        title.rectTransform.anchorMin = new Vector2(0f, 1f);
-        title.rectTransform.anchorMax = new Vector2(1f, 1f);
-        title.rectTransform.offsetMin = new Vector2(0f, -48f);
-        title.rectTransform.offsetMax = new Vector2(0f, -18f);
-
-        for (int i = 0; i < session.faults.Length; i++)
+        // Контейнер и заголовок создаём один раз; плитки пересобираются при каждой сессии.
+        if (_faultsPanelRoot == null)
         {
-            var f = session.faults[i];
-            var view = CreateTile(f.id, f.displayName, col.transform, new Vector2(0f, -110f - i * 108f), () => OnFaultClicked(f));
-            view.button.interactable = true;
-            _faultTiles[f.id] = view;
+            if (panel == null) return;
+            _faultsPanelRoot = CreatePanel("FaultsPanel", panel, new Color(0.04f, 0.06f, 0.10f, 0.85f));
+            _faultsPanelRoot.rectTransform.anchoredPosition = new Vector2(-480f, 0f);
+            _faultsPanelRoot.rectTransform.sizeDelta = new Vector2(330f, 660f);
+
+            var title = CreateText("Title", _faultsPanelRoot.transform, "НЕИСПРАВНОСТИ", 20, TextAnchor.MiddleCenter, new Color(0.75f, 0.8f, 0.9f));
+            title.rectTransform.anchorMin = new Vector2(0f, 1f);
+            title.rectTransform.anchorMax = new Vector2(1f, 1f);
+            title.rectTransform.offsetMin = new Vector2(0f, -48f);
+            title.rectTransform.offsetMax = new Vector2(0f, -18f);
+        }
+
+        // Удалить старые плитки (root и отдельную обводку-подложку) — набор сессии мог измениться.
+        foreach (var kv in _faultTiles)
+        {
+            if (kv.Value == null) continue;
+            if (kv.Value.root != null) Destroy(kv.Value.root);
+            if (kv.Value.outline != null) Destroy(kv.Value.outline);
+        }
+        _faultTiles.Clear();
+
+        // Отображаются только неисправности, связанные с поломками текущей сессии.
+        int index = 0;
+        if (session.faults != null)
+        {
+            for (int i = 0; i < session.faults.Length; i++)
+            {
+                var f = session.faults[i];
+                if (f == null || !session.IsFaultInSession(f.id)) continue;
+                var view = CreateTile(f.id, f.displayName, _faultsPanelRoot.transform, new Vector2(0f, -110f - index * 108f), () => OnFaultClicked(f));
+                view.button.interactable = true;
+                _faultTiles[f.id] = view;
+                index++;
+            }
         }
     }
 
@@ -436,7 +487,7 @@ public class RepairWindowController : MonoBehaviour
         // плитки диагностики (см. Render, состояние DiagnosticSelected).
         _runArea = CreateRect("RunArea", col.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(300f, 56f));
 
-        var runBtn = CreatePanel("RunButton", _runArea, new Color(0f, 0.5f, 0.75f));
+        var runBtn = CreatePanel("RunButton", _runArea, _manager.Session.tileColor);
         runBtn.rectTransform.anchoredPosition = Vector2.zero;
         runBtn.rectTransform.sizeDelta = new Vector2(300f, 56f);
         _runButton = runBtn.gameObject.AddComponent<Button>();
@@ -444,7 +495,7 @@ public class RepairWindowController : MonoBehaviour
         _runButton.transition = Selectable.Transition.None;
         _runButton.onClick.AddListener(StartRun);
 
-        _runLabel = CreateText("RunLabel", runBtn.transform, "ЗАПУСТИТЬ ДИАГНОСТИКУ", 20, TextAnchor.MiddleCenter, new Color(0.95f, 0.97f, 1f));
+        _runLabel = CreateText("RunLabel", runBtn.transform, "Запустить диагностику", 20, TextAnchor.MiddleCenter, new Color(0.95f, 0.97f, 1f));
         Stretch(_runLabel.rectTransform, 0f);
 
         _runArea.gameObject.SetActive(false);
@@ -521,6 +572,10 @@ public class RepairWindowController : MonoBehaviour
                 Destroy(kv.Value.root);
         _ovals.Clear();
         _fixedBreakdowns.Clear();
+        // Новая случайная сессия: n поломок и m неисправностей на каждую.
+        _manager.Session.RollSession();
+        // Пересобрать список неисправностей под новую сессию.
+        BuildFaultsPanel(null);
         CreateOvals();
 
         if (_winOverlay != null) _winOverlay.SetActive(false);
@@ -562,7 +617,7 @@ public class RepairWindowController : MonoBehaviour
 
     private void TryPickOval()
     {
-        if (Mouse.current == null || _selectedFault == null) return;
+        if (Mouse.current == null) return;
         if (!Mouse.current.leftButton.wasPressedThisFrame) return;
         var cam = Camera.main;
         if (cam == null) return;
@@ -572,11 +627,12 @@ public class RepairWindowController : MonoBehaviour
         var hits = Physics2D.OverlapPointAll(new Vector2(world.x, world.y));
         foreach (var hit in hits)
         {
-            foreach (var id in _selectedFault.breakdownIds)
+            foreach (var kv in _ovals)
             {
-                if (!_ovals.TryGetValue(id, out var oval)) continue;
+                var oval = kv.Value;
+                // Выбирать можно только овалы, которые сейчас отображаются.
                 if (!oval.visible || oval.collider != hit) continue;
-                OnBreakdownSelected(id);
+                OnBreakdownSelected(kv.Key);
                 return;
             }
         }
@@ -585,7 +641,8 @@ public class RepairWindowController : MonoBehaviour
     private void OnBreakdownSelected(string id)
     {
         var b = _manager.Session.GetBreakdown(id);
-        if (b == null || b.diagnosticIds == null || b.diagnosticIds.Length == 0) return;
+        // Поломку можно выбрать только если есть хотя бы одна диагностика, которая её выявляет.
+        if (b == null || !AnyDiagnosticRevealsBreakdown(b)) return;
         _selectedBreakdown = b;
         _state = State.BreakdownSelected;
         Render();
@@ -613,7 +670,7 @@ public class RepairWindowController : MonoBehaviour
     private void StartRun()
     {
         if (_state != State.DiagnosticSelected || _selectedDiagnostic == null) return;
-        _runDuration = Mathf.Max(0.1f, _selectedDiagnostic.durationSeconds);
+        _runDuration = Mathf.Max(0.1f, _selectedDiagnostic.duration);
         _runTimer = 0f;
         _state = State.Running;
         _runningDiagTile = _diagTiles[_selectedDiagnostic.id];
@@ -638,6 +695,8 @@ public class RepairWindowController : MonoBehaviour
         var diag = _selectedDiagnostic;
         foreach (var id in diag.breakdownIds)
         {
+            // Устраняются только поломки текущей сессии (остальные просто игнорируем).
+            if (!_manager.Session.IsInSession(id)) continue;
             if (!_fixedBreakdowns.Add(id)) continue; // уже устранена ранее
             if (_ovals.TryGetValue(id, out var oval))
             {
@@ -662,78 +721,80 @@ public class RepairWindowController : MonoBehaviour
     {
         if (_manager == null || _manager.Session == null) return;
         var pal = _manager.Session;
-        var defaultTile = new Color(0.13f, 0.17f, 0.24f);
-        var dimmed = new Color(0.10f, 0.12f, 0.16f);
 
         HideRhomb();
 
         switch (_state)
         {
             case State.Idle:
-                foreach (var kv in _faultTiles) SetTileColor(kv.Value, defaultTile);
-                foreach (var kv in _faultTiles) SetTileInteractable(kv.Value, true);
-                foreach (var kv in _faultTiles) SetOutline(kv.Value, false, pal.color3);
+                foreach (var kv in _faultTiles)
+                {
+                    SetTileColor(kv.Value, pal.tileColor);
+                    SetTileInteractable(kv.Value, true);
+                    SetOutline(kv.Value, false, pal.outlineColor);
+                }
                 foreach (var kv in _diagTiles)
                 {
-                    SetTileColor(kv.Value, defaultTile);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, false);
-                    SetOutline(kv.Value, false, pal.color3);
+                    SetOutline(kv.Value, false, pal.outlineColor);
                     SetDiagDuration(kv.Value, null, false);
                     SetDiagProgressActive(kv.Value, false);
                 }
                 SetRunAreaActive(false);
-                foreach (var kv in _ovals) SetOvalVisible(kv.Value, false, Color.white, false, pal.color3);
+                foreach (var kv in _ovals) SetOvalVisible(kv.Value, false, Color.white, false, pal.outlineColor);
                 break;
 
             case State.FaultSelected:
                 foreach (var kv in _faultTiles)
                 {
                     bool isSel = kv.Key == _selectedFault.id;
-                    SetTileColor(kv.Value, isSel ? pal.color1 : defaultTile);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, true);
-                    SetOutline(kv.Value, false, pal.color3);
+                    SetOutline(kv.Value, isSel, pal.outlineColor);
                 }
                 foreach (var kv in _diagTiles)
                 {
-                    SetTileColor(kv.Value, defaultTile);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, false);
-                    SetOutline(kv.Value, false, pal.color3);
+                    SetOutline(kv.Value, false, pal.outlineColor);
                     SetDiagDuration(kv.Value, null, false);
                     SetDiagProgressActive(kv.Value, false);
                 }
                 SetRunAreaActive(false);
                 foreach (var kv in _ovals)
                 {
-                    bool show = IsInArray(kv.Key, _selectedFault.breakdownIds);
-                    SetOvalVisible(kv.Value, show, pal.color1, false, pal.color3);
+                    bool show = BreakdownHasFaultConsequence(kv.Key, _selectedFault);
+                    SetOvalVisible(kv.Value, show, pal.tileColor, false, pal.outlineColor);
                 }
                 break;
 
             case State.BreakdownSelected:
                 foreach (var kv in _faultTiles)
                 {
-                    bool con = IsInArray(kv.Key, _selectedBreakdown.consequenceFaultIds);
                     bool isCurrent = kv.Key == _selectedFault.id;
-                    SetTileColor(kv.Value, con ? pal.color2 : defaultTile);
+                    SetTileColor(kv.Value, pal.tileColor);
                     // Плитки неисправностей остаются кликабельными, чтобы можно было
                     // вернуться и выбрать другую неисправность (и другую поломку).
                     SetTileInteractable(kv.Value, true);
-                    SetOutline(kv.Value, isCurrent, pal.color3);
+                    SetOutline(kv.Value, isCurrent, pal.outlineColor);
                 }
                 foreach (var kv in _diagTiles)
                 {
-                    bool can = IsInArray(kv.Key, _selectedBreakdown.diagnosticIds);
-                    SetTileColor(kv.Value, can ? pal.color2 : dimmed);
+                    bool can = DiagnosticRevealsBreakdown(kv.Key, _selectedBreakdown.id);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, can);
-                    SetOutline(kv.Value, false, pal.color3);
-                    SetDiagDuration(kv.Value, can ? FormatHhMm(_manager.Session.GetDiagnostic(kv.Key).durationInMinutes) : null, can);
+                    SetOutline(kv.Value, false, pal.outlineColor);
+                    SetDiagDuration(kv.Value, can ? FormatMmSs(_manager.Session.GetDiagnostic(kv.Key).duration) : null, can);
                     SetDiagProgressActive(kv.Value, false);
                 }
                 SetRunAreaActive(false);
                 foreach (var kv in _ovals)
                 {
                     bool sel = kv.Key == _selectedBreakdown.id;
-                    SetOvalVisible(kv.Value, sel, pal.color1, sel, pal.color3);
+                    bool show = sel || BreakdownHasFaultConsequence(kv.Key, _selectedFault);
+                    // Заливка не меняется (все овалы одного цвета); выбранный получает обводку.
+                    SetOvalVisible(kv.Value, show, pal.tileColor, sel, pal.outlineColor);
                 }
                 break;
 
@@ -741,47 +802,47 @@ public class RepairWindowController : MonoBehaviour
                 foreach (var kv in _faultTiles)
                 {
                     // Тоже можно вернуться к выбору неисправности.
-                    SetTileColor(kv.Value, pal.color1);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, true);
-                    SetOutline(kv.Value, kv.Key == _selectedFault.id, pal.color3);
+                    SetOutline(kv.Value, kv.Key == _selectedFault.id, pal.outlineColor);
                 }
                 foreach (var kv in _diagTiles)
                 {
-                    bool can = IsInArray(kv.Key, _selectedBreakdown.diagnosticIds);
+                    bool can = DiagnosticRevealsBreakdown(kv.Key, _selectedBreakdown.id);
                     bool sel = kv.Key == _selectedDiagnostic.id;
                     // Кандидаты остаются кликабельными: можно выбрать другую
                     // диагностику или нажать на выбранную, чтобы отменить её.
-                    SetTileColor(kv.Value, sel ? pal.color1 : can ? pal.color2 : dimmed);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, can);
-                    SetOutline(kv.Value, sel, pal.color3);
-                    SetDiagDuration(kv.Value, can ? FormatHhMm(_manager.Session.GetDiagnostic(kv.Key).durationInMinutes) : null, can);
+                    SetOutline(kv.Value, sel, pal.outlineColor);
+                    SetDiagDuration(kv.Value, can ? FormatMmSs(_manager.Session.GetDiagnostic(kv.Key).duration) : null, can);
                     SetDiagProgressActive(kv.Value, false);
                 }
                 SetRunAreaActive(true);
                 if (_selectedDiagnostic != null && _diagTiles.TryGetValue(_selectedDiagnostic.id, out var selectedTile))
                     PositionRunAreaAtTile(selectedTile);
-                _runButton.image.color = pal.color1;
-                _runLabel.text = "ЗАПУСТИТЬ ДИАГНОСТИКУ";
+                _runButton.image.color = pal.tileColor;
+                _runLabel.text = "Запустить диагностику";
                 foreach (var kv in _ovals)
                 {
                     bool show = IsInArray(kv.Key, _selectedDiagnostic.breakdownIds);
-                    SetOvalVisible(kv.Value, show, pal.color2, false, pal.color3);
+                    SetOvalVisible(kv.Value, show, pal.tileColor, false, pal.outlineColor);
                 }
                 break;
 
             case State.Running:
                 foreach (var kv in _faultTiles)
                 {
-                    SetTileColor(kv.Value, pal.color1);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, false);
-                    SetOutline(kv.Value, false, pal.color3);
+                    SetOutline(kv.Value, false, pal.outlineColor);
                 }
                 foreach (var kv in _diagTiles)
                 {
                     bool sel = kv.Key == _selectedDiagnostic.id;
-                    SetTileColor(kv.Value, sel ? pal.color1 : dimmed);
+                    SetTileColor(kv.Value, pal.tileColor);
                     SetTileInteractable(kv.Value, false);
-                    SetOutline(kv.Value, false, pal.color3);
+                    SetOutline(kv.Value, false, pal.outlineColor);
                     SetDiagDuration(kv.Value, null, false);
                     SetDiagProgressActive(kv.Value, sel);
                 }
@@ -789,8 +850,9 @@ public class RepairWindowController : MonoBehaviour
                 foreach (var kv in _ovals)
                 {
                     bool show = IsInArray(kv.Key, _selectedDiagnostic.breakdownIds);
-                    SetOvalVisible(kv.Value, show, pal.color1, false, pal.color3);
+                    SetOvalVisible(kv.Value, show, pal.tileColor, false, pal.outlineColor);
                 }
+                ShowRhomb(pal.progressColor);
                 break;
         }
     }
@@ -814,6 +876,29 @@ public class RepairWindowController : MonoBehaviour
         _runArea.anchoredPosition = tileRt.anchoredPosition;
     }
 
+    private bool BreakdownHasFaultConsequence(string breakdownId, RepairFault fault)
+    {
+        var b = _manager.Session.GetBreakdown(breakdownId);
+        // Учитываем только поломки, вошедшие в текущую сессию, и выбранные для них неисправности.
+        return b != null
+            && _manager.Session.IsInSession(breakdownId)
+            && _manager.Session.BreakdownHasFault(breakdownId, fault.id);
+    }
+
+    private bool DiagnosticRevealsBreakdown(string diagnosticId, string breakdownId)
+    {
+        var d = _manager.Session.GetDiagnostic(diagnosticId);
+        return d != null && IsInArray(breakdownId, d.breakdownIds);
+    }
+
+    private bool AnyDiagnosticRevealsBreakdown(RepairBreakdown b)
+    {
+        foreach (var d in _manager.Session.diagnostics)
+            if (d != null && IsInArray(b.id, d.breakdownIds))
+                return true;
+        return false;
+    }
+
     private static bool IsInArray(string key, string[] array)
     {
         if (array == null) return false;
@@ -835,7 +920,7 @@ public class RepairWindowController : MonoBehaviour
         view.progress.gameObject.SetActive(active);
         if (!active) return;
         var fill = view.progress.transform.GetChild(0).GetComponent<Image>();
-        fill.color = _manager.Session.color4;
+        fill.color = _manager.Session.progressColor;
         fill.fillAmount = 0f;
     }
 
@@ -843,11 +928,12 @@ public class RepairWindowController : MonoBehaviour
     private void CreateOvals()
     {
         var session = _manager.Session;
-        if (session == null || session.breakdowns == null) return;
+        var sessionBreakdowns = session.SessionBreakdowns;
+        if (sessionBreakdowns == null || sessionBreakdowns.Length == 0) return;
 
-        for (int i = 0; i < session.breakdowns.Length; i++)
+        for (int i = 0; i < sessionBreakdowns.Length; i++)
         {
-            var b = session.breakdowns[i];
+            var b = sessionBreakdowns[i];
             var go = new GameObject("Oval_" + b.id);
             go.transform.SetParent(_shipTransform, false);
 
@@ -856,7 +942,7 @@ public class RepairWindowController : MonoBehaviour
             sr.sortingOrder = 2;
             float native = _circleSprite.bounds.size.x;
 
-            Vector2 worldOvalSize = new Vector2(_shipSize.x * b.ovalSize.x, _shipSize.y * b.ovalSize.y);
+            Vector2 worldOvalSize = new Vector2(_shipSize.x * session.ovalSize.x, _shipSize.y * session.ovalSize.y);
             float w = Mathf.Max(0.2f, worldOvalSize.x / _shipScale);
             float h = Mathf.Max(0.2f, worldOvalSize.y / _shipScale);
             float px = (b.shipPosition.x - 0.5f) * _shipSize.x / _shipScale;
@@ -870,7 +956,7 @@ public class RepairWindowController : MonoBehaviour
             var outline = new GameObject("Outline");
             outline.transform.SetParent(go.transform, false);
             var or = outline.AddComponent<SpriteRenderer>();
-            or.sprite = _circleSprite;
+            or.sprite = _ringSprite;
             or.sortingOrder = 3;
             outline.transform.localScale = new Vector3(1.22f, 1.22f, 1f);
 
@@ -902,6 +988,8 @@ public class RepairWindowController : MonoBehaviour
         if (view == null || view.root == null) return;
         view.root.SetActive(visible);
         view.visible = visible;
+        // Заливку меняем только когда овал видим; при выборе она не меняется —
+        // выбранная поломка сохраняет свой цвет и получает лишь обводку.
         view.renderer.color = visible ? fillColor : Color.white;
         var or = view.outline.GetComponent<SpriteRenderer>();
         or.color = visible && outlined ? outlineColor : new Color(1f, 1f, 1f, 0f);
@@ -914,49 +1002,53 @@ public class RepairWindowController : MonoBehaviour
     }
 
     // ---------- Ромб символа диагностики ----------
-    private void ShowRhomb(Color color4)
+    private void ShowRhomb(Color color)
     {
-        if (_selectedDiagnostic == null) return;
+        if (_selectedDiagnostic == null || _rhombs.Count > 0) return;
         var ids = _selectedDiagnostic.breakdownIds;
         if (ids == null || ids.Length == 0) return;
 
-        Vector2 acc = Vector2.zero;
-        int n = 0;
         foreach (var id in ids)
         {
+            // Ромб появляется на каждой поломке, которую выявляет эта диагностика.
             if (!_ovals.TryGetValue(id, out var ov) || !ov.visible) continue;
-            acc += (Vector2)ov.root.transform.position;
-            n++;
+            CreateRhomb(ov.root.transform.position, color);
         }
-        if (n == 0) return;
-        CreateRhomb(acc / n, color4);
     }
 
     private void CreateRhomb(Vector2 worldPos, Color color)
     {
-        if (_rhomb != null) return;
+        var session = _manager.Session;
+        if (session == null) return;
+
         var go = new GameObject("DiagRhomb");
         go.transform.SetParent(_shipTransform, false);
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = _squareSprite;
         sr.sortingOrder = 4;
         sr.color = color;
+
+        // Повёрнутый на 45° квадрат образует ромб, чья диагональ (расстояние между
+        // противоположными вершинами) равна стороне квадрата * √2. Чтобы диагональ ромба
+        // совпала с вертикальным размером овала поломки (ovalSize.y), сторона квадрата
+        // должна быть _shipSize.y * ovalSize.y / √2.
         float native = _squareSprite.bounds.size.x;
-        float size = 0.45f * _shipSize.y / _shipScale;
-        go.transform.localScale = new Vector3(size / native, size / native, 1f);
+        float rhombSideWorld = (_shipSize.y * session.ovalSize.y) / Mathf.Sqrt(2f);
+        float rhombSideLocal = rhombSideWorld / _shipScale;
+        go.transform.localScale = new Vector3(rhombSideLocal / native, rhombSideLocal / native, 1f);
+
         Vector2 local = ((Vector2)worldPos - (Vector2)_shipTransform.position) / _shipScale;
         go.transform.localPosition = new Vector3(local.x, local.y, 0f);
         go.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
-        _rhomb = go;
+        _rhombs.Add(go);
     }
 
     private void HideRhomb()
     {
-        if (_rhomb != null)
-        {
-            Destroy(_rhomb);
-            _rhomb = null;
-        }
+        foreach (var rhomb in _rhombs)
+            if (rhomb != null)
+                Destroy(rhomb);
+        _rhombs.Clear();
     }
 
     // ---------- Победа / поражение ----------

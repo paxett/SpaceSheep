@@ -68,6 +68,8 @@ public class RepairGameManager : MonoBehaviour
         }
 
         sessionData.BuildLookups();
+        // Случайный балансный набор поломок для корабля (n поломок, m неисправностей на поломку).
+        sessionData.RollSession();
 
         BuildShip();
         CurrentTime = maxTimeSeconds;

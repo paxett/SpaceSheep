@@ -12,82 +12,71 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1d4b7c20e2f4b4a9d3c1a2b6c1d5a1f, type: 3}
   m_Name: RepairSessionData
   m_EditorClassIdentifier: 
-  color1: {r: 0, g: 0.8117647, b: 1, a: 1}
-  color2: {r: 1, g: 0.62352943, b: 0.10980392, a: 1}
-  color3: {r: 0.4862745, g: 1, b: 0.41960785, a: 1}
-  color4: {r: 1, g: 0.83137256, b: 0.14117648, a: 1}
+  tileColor: {r: 1, g: 0.684853, b: 0.10196078, a: 1}
+  outlineColor: {r: 1, g: 1, b: 1, a: 1}
+  progressColor: {r: 0.6, g: 0.25, b: 0.95, a: 1}
+  maxBreakdownsPerSession: 5
+  faultsPerBreakdown: 5
+  ovalSize: {x: 0.14, y: 0.09}
   faults:
-  - id: Н1
-    displayName: Неисправность 1
-    breakdownIds:
-    - П1
-    - П3
-  - id: Н2
-    displayName: Неисправность 2
-    breakdownIds:
-    - П2
-    - П3
-  - id: Н3
-    displayName: Неисправность 3
-    breakdownIds:
-    - П3
-    - П4
+  - id: "\u041D1"
+    displayName: "\u041F\u0430\u0434\u0435\u043D\u0438\u0435 \u0441\u0442\u0430\u0440\u0442\u043E\u0432\u043E\u0439
+      \u0441\u043A\u043E\u0440\u043E\u0441\u0442\u0438"
+  - id: "\u041D2"
+    displayName: "\u041C\u0435\u0440\u0446\u0430\u043D\u0438\u0435 \u0441\u0432\u0435\u0442\u0430
+      \u0432 \u043A\u0430\u0431\u0438\u043D\u0435"
+  - id: "\u041D3"
+    displayName: "\u0417\u0430\u043F\u0430\u0445 \u0433\u0430\u0440\u0438"
   breakdowns:
-  - id: П1
-    displayName: Поломка 1
+  - id: "\u041F1"
+    displayName: "\u0422\u0440\u0435\u0449\u0438\u043D\u0430 \u0432 \u0442\u0440\u0443\u0431\u043A\u0435
+      \u041C\u0438\u043B\u043B\u0435\u0440\u0430"
     shipPosition: {x: 0.28, y: 0.72}
-    ovalSize: {x: 0.07, y: 0.045}
     consequenceFaultIds:
-    - Н1
-    - Н2
-    diagnosticIds:
-    - Д1
-  - id: П2
-    displayName: Поломка 2
+    - "\u041D1"
+  - id: "\u041F2"
+    displayName: "\u041F\u043E\u0432\u0440\u0435\u0436\u0434\u0435\u043D\u0438\u0435
+      \u0432\u043F\u0443\u0441\u043A\u043D\u043E\u0433\u043E \u043A\u043B\u0430\u043F\u0430\u043D\u0430"
     shipPosition: {x: 0.72, y: 0.68}
-    ovalSize: {x: 0.07, y: 0.045}
     consequenceFaultIds:
-    - Н2
-    - Н3
-    diagnosticIds:
-    - Д1
-  - id: П3
-    displayName: Поломка 3
+    - "\u041D1"
+  - id: "\u041F3"
+    displayName: "\u0421\u0431\u043E\u0439 \u043F\u0443\u0441\u043A\u043E\u0432\u043E\u0439
+      \u044D\u043B\u0435\u043A\u0442\u0440\u0438\u043A\u0438"
     shipPosition: {x: 0.3, y: 0.16}
-    ovalSize: {x: 0.07, y: 0.045}
     consequenceFaultIds:
-    - Н1
-    - Н2
-    diagnosticIds:
-    - Д2
-  - id: П4
-    displayName: Поломка 4
+    - "\u041D1"
+    - "\u041D2"
+  - id: "\u041F4"
+    displayName: "\u0421\u0431\u043E\u0439 \u0432 \u0441\u0438\u0441\u0442\u0435\u043C\u0435
+      \u0418\u0418"
     shipPosition: {x: 0.7, y: 0.24}
-    ovalSize: {x: 0.07, y: 0.045}
     consequenceFaultIds:
-    - Н1
-    - Н3
-    diagnosticIds:
-    - Д2
-    - Д3
+    - "\u041D2"
+  - id: "\u041F5"
+    displayName: "\u041D\u0435\u0438\u0441\u043F\u0440\u0430\u0432\u043D\u0430\u044F
+      \u043F\u0440\u043E\u0432\u043E\u0434\u043A\u0430"
+    shipPosition: {x: 0.76, y: 0.11}
+    consequenceFaultIds:
+    - "\u041D2"
+    - "\u041D3"
   diagnostics:
-  - id: Д1
-    displayName: Диагностика А
-    durationInMinutes: 1
-    durationSeconds: 3
+  - id: "\u04141"
+    displayName: "X-ray \u0430\u043D\u0430\u043B\u0438\u0437"
+    duration: 3
     breakdownIds:
-    - П1
-    - П2
-  - id: Д2
-    displayName: Диагностика В
-    durationInMinutes: 2
-    durationSeconds: 5
+    - "\u041F1"
+    - "\u041F2"
+  - id: "\u04142"
+    displayName: "\u041F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u043D\u0430\u044F
+      \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430"
+    duration: 5
     breakdownIds:
-    - П3
-    - П4
-  - id: Д3
-    displayName: Диагностика С
-    durationInMinutes: 3
-    durationSeconds: 4
+    - "\u041F3"
+    - "\u041F4"
+  - id: "\u04143"
+    displayName: "\u0414\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0430
+      \u043F\u0440\u043E\u0432\u043E\u0434\u043A\u0438"
+    duration: 4
     breakdownIds:
-    - П4
+    - "\u041F5"
