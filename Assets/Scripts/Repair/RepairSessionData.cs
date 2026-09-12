@@ -12,10 +12,16 @@ public class RepairSessionData : ScriptableObject
     [Header("Палитра")]
     [Tooltip("Цвет всех плиток/овалов: неисправности, поломки на корабле, диагностики (единая заливка).")]
     public Color tileColor = new Color(1f, 0.6f, 0.1f);
+    [Tooltip("Цвет выбранной плитки/поломки (подсветка текущего выбора в интерфейсе и на корабле).")]
+    public Color selectedTileColor = new Color(1f, 0.84f, 0.25f);
     [Tooltip("Цвет обводки выбранной плитки/овала.")]
     public Color outlineColor = new Color(1f, 1f, 1f);
     [Tooltip("Цвет прогресс-бара диагностики и ромбов-маркеров на диагностируемых поломках.")]
     public Color progressColor = new Color(0.6f, 0.25f, 0.95f);
+    [Tooltip("Цвет поломки, которую диагностика обнаружила/устранила (поломка остаётся на корабле и окрашивается этим цветом).")]
+    public Color detectedColor = new Color(0.35f, 0.9f, 0.4f);
+    [Tooltip("Цвет ремонтируемой поломки: заливка овала и прогресс-бар на кнопке ремонта во время починки (заливка медленно мерцает).")]
+    public Color repairingColor = new Color(1f, 0.9f, 0.3f);
 
     [Header("Балансные значения для ремонтируемого корабля")]
     [Tooltip("Максимальное количество поломок на корабле (n). Из общего списка ремонтируемых поломок случайно выбирается не более n; если поломок меньше — берутся все.")]
@@ -82,6 +88,14 @@ public class RepairSessionData : ScriptableObject
         if (!_faultsForBreakdown.TryGetValue(breakdownId, out var faults))
             return false;
         return faults != null && System.Array.IndexOf(faults, faultId) >= 0;
+    }
+
+    /// <summary>Неисправности, отобранные для указанной поломки в рамках текущей сессии.</summary>
+    public string[] GetFaultsForBreakdown(string breakdownId)
+    {
+        return _faultsForBreakdown.TryGetValue(breakdownId, out var faults) && faults != null
+            ? faults
+            : new string[0];
     }
 
     /// <summary>Входит ли неисправность в текущую сессию (связана хотя бы с одной выбранной поломкой).</summary>
@@ -182,6 +196,14 @@ public class RepairBreakdown
     public Vector2 shipPosition = new Vector2(0.5f, 0.5f);
     [Tooltip("ID неисправностей, которые может повлечь эта поломка. По ним выводятся овалы на корабле при выборе неисправности.")]
     public string[] consequenceFaultIds;
+    [Tooltip("Время самостоятельного ремонта (без робота) в секундах.")]
+    public float humanRepairDuration = 8f;
+    [Tooltip("Цена самостоятельного ремонта (без робота).")]
+    public int humanRepairCost = 20;
+    [Tooltip("Время ремонта с помощью робота в секундах.")]
+    public float robotRepairDuration = 4f;
+    [Tooltip("Цена ремонта с помощью робота.")]
+    public int robotRepairCost = 50;
 }
 
 [System.Serializable]

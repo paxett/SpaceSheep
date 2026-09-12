@@ -30,10 +30,14 @@ public class RepairGameManager : MonoBehaviour
     public Collider2D ShipCollider { get; private set; }
     public Transform ShipTransform { get; private set; }
 
+    /// <summary>Счёт игрока: деньги, зачисляемые за выполненные ремонты.</summary>
+    public int Money { get; private set; }
+
     public event Action<float> OnTimeChanged;
     public event Action OnTimeUp;
     public event Action OnWin;
     public event Action OnLose;
+    public event Action<int> OnMoneyChanged;
 
     private RepairWindowController _window;
     private bool _initialized;
@@ -197,6 +201,24 @@ public class RepairGameManager : MonoBehaviour
         OnWin?.Invoke();
     }
 
+    /// <summary>Зачислить на счёт сумму за выполненный ремонт и обновить счётчик денег.</summary>
+    public void AddMoney(int amount)
+    {
+        if (amount == 0)
+            return;
+        Money += amount;
+        OnMoneyChanged?.Invoke(Money);
+    }
+
+    /// <summary>Сбросить счёт (при перезапуске мини-игры).</summary>
+    public void ResetMoney()
+    {
+        if (Money == 0)
+            return;
+        Money = 0;
+        OnMoneyChanged?.Invoke(Money);
+    }
+
     private void Lose()
     {
         if (IsOver)
@@ -222,6 +244,7 @@ public class RepairGameManager : MonoBehaviour
         IsPaused = false;
         WindowOpen = false;
 
+        ResetMoney();
         _window.ResetGame();
         OnTimeChanged?.Invoke(CurrentTime);
     }
